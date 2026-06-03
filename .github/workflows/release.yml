@@ -1,4 +1,4 @@
-name: Create Release
+name: Create Release from PR Descriptions
 
 on:
   push:
@@ -7,16 +7,112 @@ on:
 
 permissions:
   contents: write
+  pull-requests: read
 
 jobs:
   release:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+      - name: Generate release notes from PR descriptions
+        uses: actions/github-script@v7
         with:
-          generate_release_notes: true
+          script: |
+            const tag = context.ref.replace("refs/tags/", "");
+
+            const { owner, repo } = context.repo;
+
+            // Aktuellen Tag holen
+            const currentTag = await github.rest.git.getRef({
+              owner,
+              repo,
+              ref: `tags/${tag}`
+            });
+
+            // Alle Tags holen
+            const tags = await github.rest.repos.listTags({
+              owner,
+              repo,
+              per_page: 100
+            });
+
+            const currentIndex = tags.data.findIndex(t => t.name === tag);
+            const previousTag = tags.data[currentIndex + 1]?.name;
+
+            let prs = [];
+
+            if (previousTag) {
+              const comparison = await github.rest.repos.compareCommits({
+                owner,
+                repo,
+                base: previousTag,
+                head: tag
+              });
+
+              const commits = comparison.data.commits;
+
+              for (const commit of commits) {
+                const result = await github.rest.repos.listPullRequestsAssociatedWithCommit({
+                  owner,
+                  repo,
+                  commit_sha: commit.sha
+                });
+
+                for (const pr of result.data) {
+                  if (pr.merged_at && !prs.find(existing => existing.number === pr.number)) {
+                    prs.push(pr);
+                  }
+                }
+              }
+            } else {
+              // Falls es der erste Release ist
+              const result = await github.rest.pulls.list({
+                owner,
+                repo,
+                state: "closed",
+                base: "main",
+                per_page: 100
+              });
+
+              prs = result.data.filter(pr => pr.merged_at);
+            }
+
+            function extractReleaseNotes(body) {
+              if (!body) return "";
+
+              const match = body.match(/## Release Notes([\s\S]*?)(## Technical Details|## Checklist|$)/i);
+
+              if (!match) return "";
+
+              return match[1].trim();
+            }
+
+            let releaseBody = `# Release ${tag}\n\n`;
+
+            if (previousTag) {
+              releaseBody += `Vergleich: ${previousTag}...${tag}\n\n`;
+            }
+
+            for (const pr of prs) {
+              const notes = extractReleaseNotes(pr.body);
+
+              if (!notes) continue;
+
+              releaseBody += `## PR #${pr.number} - ${pr.title}\n\n`;
+              releaseBody += `${notes}\n\n`;
+              releaseBody += `---\n\n`;
+            }
+
+            if (releaseBody.trim() === `# Release ${tag}`) {
+              releaseBody += "Keine Release Notes in den PR-Beschreibungen gefunden.";
+            }
+
+            await github.rest.repos.createRelease({
+              owner,
+              repo,
+              tag_name: tag,
+              name: tag,
+              body: releaseBody,
+              draft: false,
+              prerelease: false
+            });
