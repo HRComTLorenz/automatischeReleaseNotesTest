@@ -104,7 +104,7 @@ jobs:
                 const items = extractCategoryItems(notes, category);
 
                 for (const item of items) {
-                  categories[category].push(`- ${item} (PR#${pr.number})`);
+                  categories[category].push(`- ${item} (PR#${pr.number} by @${pr.user.login})`);
                 }
               }
             }
@@ -118,7 +118,7 @@ jobs:
             }
 
             for (const category of Object.keys(categories)) {
-              releaseBody += `${category}\n`;
+              releaseBody += `## ${category}\n`;
 
               if (categories[category].length > 0) {
                 releaseBody += categories[category].join("\n") + "\n\n";
