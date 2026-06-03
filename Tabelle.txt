@@ -1,4 +1,9 @@
 count   | firstname | lastname  | age   | gender
 1       | tim       | lorenz    | 25    | male
 2       | michi     | kiefl     | 34    | male
-3       | ismael    | -         | 27    | male
+3       | max       | -         | 27    | male
+4       | tom       | -         | 27    | male
+5       | ralli     | -         | 27    | male
+6       | mo        | -         | 27    | male
+7       | willi     | -         | 27    | male
+8       | hans      | -         | 27    | male
