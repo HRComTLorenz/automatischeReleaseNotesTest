@@ -1,0 +1,2 @@
+pernr   | lastname  |   gehalt
+00000001| lorenz    |   4500
