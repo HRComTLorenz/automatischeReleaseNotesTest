@@ -1,3 +1,4 @@
-count   | firstname | lastname  | age
-1       | tim       | lorenz    | 25
-2       | michi     | kiefl     | 28
+count   | firstname | lastname  | age   | gender
+1       | tim       | lorenz    | 25    | male
+2       | michi     | kiefl     | 34    | male
+3       | ismael    | -         | 27    | male
