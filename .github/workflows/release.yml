@@ -19,17 +19,8 @@ jobs:
         with:
           script: |
             const tag = context.ref.replace("refs/tags/", "");
-
             const { owner, repo } = context.repo;
 
-            // Aktuellen Tag holen
-            const currentTag = await github.rest.git.getRef({
-              owner,
-              repo,
-              ref: `tags/${tag}`
-            });
-
-            // Alle Tags holen
             const tags = await github.rest.repos.listTags({
               owner,
               repo,
@@ -59,38 +50,49 @@ jobs:
                 });
 
                 for (const pr of result.data) {
-                  if (pr.merged_at && !prs.find(existing => existing.number === pr.number)) {
+                  if (
+                    pr.merged_at &&
+                    !prs.find(existing => existing.number === pr.number)
+                  ) {
                     prs.push(pr);
                   }
                 }
               }
-            } else {
-              // Falls es der erste Release ist
-              const result = await github.rest.pulls.list({
-                owner,
-                repo,
-                state: "closed",
-                base: "main",
-                per_page: 100
-              });
-
-              prs = result.data.filter(pr => pr.merged_at);
             }
+
+            const categories = {
+              Added: [],
+              Changed: [],
+              Fixed: [],
+              Removed: []
+            };
 
             function extractReleaseNotes(body) {
               if (!body) return "";
 
-              const match = body.match(/## Release Notes([\s\S]*?)(## Technical Details|## Checklist|$)/i);
+              const match = body.match(
+                /## Release Notes([\s\S]*?)(## Technical Details|## Checklist|$)/i
+              );
 
-              if (!match) return "";
-
-              return match[1].trim();
+              return match ? match[1].trim() : "";
             }
 
-            let releaseBody = `# Release ${tag}\n\n`;
+            function extractCategoryItems(notes, category) {
+              const regex = new RegExp(
+                `### ${category}\\s*([\\s\\S]*?)(### Added|### Changed|### Fixed|### Removed|$)`,
+                "i"
+              );
 
-            if (previousTag) {
-              releaseBody += `Vergleich: ${previousTag}...${tag}\n\n`;
+              const match = notes.match(regex);
+
+              if (!match) return [];
+
+              return match[1]
+                .split("\n")
+                .map(line => line.trim())
+                .filter(line => line.startsWith("-"))
+                .map(line => line.replace(/^-+\s*/, "").trim())
+                .filter(line => line.length > 0);
             }
 
             for (const pr of prs) {
@@ -98,20 +100,38 @@ jobs:
 
               if (!notes) continue;
 
-              releaseBody += `## PR #${pr.number} - ${pr.title}\n\n`;
-              releaseBody += `${notes}\n\n`;
-              releaseBody += `---\n\n`;
+              for (const category of Object.keys(categories)) {
+                const items = extractCategoryItems(notes, category);
+
+                for (const item of items) {
+                  categories[category].push(`- ${item} (PR#${pr.number})`);
+                }
+              }
             }
 
-            if (releaseBody.trim() === `# Release ${tag}`) {
-              releaseBody += "Keine Release Notes in den PR-Beschreibungen gefunden.";
+            let releaseBody = `Release ${tag}\n`;
+
+            if (previousTag) {
+              releaseBody += `Vergleich: ${previousTag}...${tag}\n\n`;
+            } else {
+              releaseBody += `Vergleich: Erstes Release\n\n`;
+            }
+
+            for (const category of Object.keys(categories)) {
+              releaseBody += `${category}\n`;
+
+              if (categories[category].length > 0) {
+                releaseBody += categories[category].join("\n") + "\n\n";
+              } else {
+                releaseBody += "- \n\n";
+              }
             }
 
             await github.rest.repos.createRelease({
               owner,
               repo,
               tag_name: tag,
-              name: tag,
+              name: `Release ${tag}`,
               body: releaseBody,
               draft: false,
               prerelease: false
